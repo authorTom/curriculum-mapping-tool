@@ -67,6 +67,45 @@ To reset everything, stop the server and delete the `data/` directory.
   managed secret rotation (otherwise one is generated and stored in `data/`).
 - Back up the `data/` directory (SQLite database + session secret).
 
+## Deploying to Railway
+
+The repo ships with a `Dockerfile` and `railway.json`, so Railway builds and
+runs the app with no extra configuration. Two things are essential:
+
+1. **A persistent volume** — Railway's container filesystem is wiped on every
+   redeploy. Without a volume your SQLite database (all users, opportunities,
+   logs) and session secret are lost each deploy.
+2. **An EU region + demo data only** — see the information-governance note
+   below before putting any real personal data on a public cloud.
+
+### Steps
+
+1. Push this repo to GitHub.
+2. In Railway: **New Project → Deploy from GitHub repo**, and pick this repo.
+   Railway detects the `Dockerfile` and builds it automatically.
+3. **Add a volume:** open the service → **Variables/Settings → Volumes →
+   New Volume**, mount path **`/data`**. The Dockerfile already sets
+   `DATA_DIR=/data`, so the database and session secret persist there.
+   (If you mount elsewhere, set the `DATA_DIR` variable to match.)
+4. **Set environment variables** on the service:
+   - `SESSION_SECRET` — a long random string (e.g. `openssl rand -hex 32`).
+   - `NODE_ENV` is already `production` from the Dockerfile.
+   Railway injects `PORT` automatically; the server already honours it.
+5. **Generate a domain:** service → **Settings → Networking → Generate Domain**.
+6. On first boot the database seeds the demo accounts (password `demo1234`).
+   **Immediately sign in as `admin@demo.nhs.uk` and disable or re-password the
+   demo accounts** via *Admin → Users* — they are public-internet-accessible.
+
+Alternatively, with the Railway CLI: `railway init`, then `railway up`, then
+add the volume and variables in the dashboard as above.
+
+> **Information governance:** Railway is a US-headquartered public cloud.
+> Hosting real trainee data (names, emails, portfolio reflections — all
+> personal data) there has DSPT and UK GDPR data-residency implications that
+> need IG sign-off and, at minimum, an EU region. This is fine for a
+> demo/pilot using the seeded sample data; it is **not** a substitute for the
+> internal Trust hosting described above for production use.
+
 ## Roadmap / future work
 
 - **Portfolio platform API:** the data model already separates curricula,
