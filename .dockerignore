@@ -1,0 +1,9 @@
+node_modules
+client/node_modules
+client/dist
+data
+.git
+.gitignore
+*.log
+.DS_Store
+npm-debug.log*

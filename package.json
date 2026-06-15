@@ -1,0 +1,21 @@
+{
+  "name": "curriculum-mapping-tool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Curriculum mapping tool for NHS medical education - maps learning opportunities to training curricula from undergraduate to consultant level",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "build": "cd client && npm install && npm run build",
+    "setup": "npm install && cd client && npm install"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-session": "^2.1.0",
+    "express": "^4.21.0"
+  }
+}
