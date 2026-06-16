@@ -99,6 +99,24 @@ runs the app with no extra configuration. Two things are essential:
 Alternatively, with the Railway CLI: `railway init`, then `railway up`, then
 add the volume and variables in the dashboard as above.
 
+### Turning on email notifications (optional)
+
+The app works without email — notifications are simply logged. To send real
+emails (educators on QA decisions, admins on new registrations, users on
+password resets), connect any SMTP service (e.g. NHSmail relay, or a provider
+such as Resend/SendGrid/Mailgun) by adding these Railway variables:
+
+| Variable | Example | Notes |
+|---|---|---|
+| `SMTP_HOST` | `smtp.resend.com` | Your provider's SMTP host |
+| `SMTP_PORT` | `587` | 465 if using TLS/secure |
+| `SMTP_USER` | `apikey` or a username | From your provider |
+| `SMTP_PASS` | (secret) | From your provider |
+| `MAIL_FROM` | `Curriculum Tool <no-reply@yourtrust.nhs.uk>` | Sender shown to recipients |
+| `APP_URL` | `https://your-app.up.railway.app` | Added as a link at the foot of emails |
+
+No code change is needed — set the variables and Railway restarts the app.
+
 > **Information governance:** Railway is a US-headquartered public cloud.
 > Hosting real trainee data (names, emails, portfolio reflections — all
 > personal data) there has DSPT and UK GDPR data-residency implications that

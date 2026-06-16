@@ -6,7 +6,7 @@ const TYPES = ['Course', 'Workshop', 'Simulation', 'Skills lab', 'Clinical attac
 
 const EMPTY = {
   title: '', description: '', type: '', specialty: '', site: '', schedule: '',
-  capacity: '', audience: '', lead_name: '', lead_email: '', active: true,
+  capacity: '', audience: '', lead_name: '', lead_email: '', booking_url: '', active: true,
 };
 
 export default function OpportunityForm() {
@@ -29,7 +29,7 @@ export default function OpportunityForm() {
         setForm({
           title: o.title, description: o.description || '', type: o.type, specialty: o.specialty || '',
           site: o.site || '', schedule: o.schedule || '', capacity: o.capacity || '', audience: o.audience || '',
-          lead_name: o.lead_name || '', lead_email: o.lead_email || '', active: !!o.active,
+          lead_name: o.lead_name || '', lead_email: o.lead_email || '', booking_url: o.booking_url || '', active: !!o.active,
         });
         setSelectedCaps(new Set(o.capabilities.map((c) => c.id)));
       }).catch((e) => setError(e.message));
@@ -102,6 +102,9 @@ export default function OpportunityForm() {
         </label>
         <label>Lead educator email
           <input type="email" value={form.lead_email} onChange={set('lead_email')} />
+        </label>
+        <label>Booking / information link <span className="hint">a web address trainees can click to book or read more (e.g. an intranet or booking-system page)</span>
+          <input type="text" value={form.booking_url} onChange={set('booking_url')} placeholder="https://…" />
         </label>
 
         <label>Curriculum capabilities * <span className="hint">tick every capability this opportunity helps meet — across any curriculum, undergraduate to consultant ({selectedCaps.size} selected)</span></label>

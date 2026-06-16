@@ -22,6 +22,17 @@ export default function AdminUsers() {
     }
   }
 
+  async function resetPassword(u) {
+    if (!confirm(`Reset the password for ${u.name}? They'll get a temporary password and must change it at next login.`)) return;
+    setError('');
+    try {
+      const d = await api.post(`/users/${u.id}/reset-password`);
+      alert(`Temporary password for ${u.email}:\n\n${d.temporary_password}\n\nShare this securely. They'll be asked to set their own at next login.`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   const pending = users.filter((u) => u.status === 'pending');
 
   return (
@@ -53,6 +64,7 @@ export default function AdminUsers() {
                 {u.status === 'pending' && <button className="small" onClick={() => update(u, { status: 'active' })}>Approve</button>}
                 {u.status === 'active' && u.id !== me.id && <button className="small danger" onClick={() => update(u, { status: 'disabled' })}>Disable</button>}
                 {u.status === 'disabled' && <button className="small secondary" onClick={() => update(u, { status: 'active' })}>Re-enable</button>}
+                {u.status !== 'pending' && <button className="small secondary" onClick={() => resetPassword(u)}>Reset password</button>}
               </td>
             </tr>
           ))}

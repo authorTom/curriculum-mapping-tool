@@ -53,7 +53,10 @@ export default function TraineeDashboard() {
             <div className={gaps.length ? 'stat warn' : 'stat'}><div className="n">{gaps.length}</div><div className="label">Gaps — no evidence yet</div></div>
           </div>
 
-          <h2>Capability coverage</h2>
+          <h2>Capability coverage
+            {' '}<a className="btn small secondary" href={`/api/gaps.csv?curriculum_id=${user.curriculum_id}`} style={{ fontWeight: 400 }}>⬇ Export (CSV)</a>
+          </h2>
+          <div className="table-scroll">
           <table>
             <thead>
               <tr><th>Capability</th><th>My evidence</th><th>Learning available</th><th></th></tr>
@@ -85,6 +88,7 @@ export default function TraineeDashboard() {
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
 

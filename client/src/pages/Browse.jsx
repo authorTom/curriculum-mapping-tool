@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../App';
+import Stars from '../components/Stars';
 
 const QA_TAG = { approved: ['green', 'QA approved'], pending: ['amber', 'Awaiting QA'], rejected: ['red', 'Rejected'] };
 
@@ -87,7 +88,13 @@ export default function Browse() {
               {seesQaStatus && o.qa_status && (
                 <span className={`tag ${QA_TAG[o.qa_status][0]}`}>{QA_TAG[o.qa_status][1]}</span>
               )}
+              {o.rating_count > 0 && <Stars value={o.rating_avg} count={o.rating_count} small />}
             </div>
+            {o.booking_url && (
+              <p style={{ margin: '8px 0 0' }}>
+                <a className="btn small" href={o.booking_url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Book / find out more ↗</a>
+              </p>
+            )}
           </div>
         ))}
       </div>

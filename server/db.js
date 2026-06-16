@@ -84,7 +84,53 @@ CREATE TABLE IF NOT EXISTS portfolio_logs (
   reflection TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS bookmarks (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, opportunity_id)
+);
+
+CREATE TABLE IF NOT EXISTS ratings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  opportunity_id INTEGER NOT NULL REFERENCES opportunities(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL,                        -- 1..5 stars
+  comment TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, opportunity_id)
+);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  key TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
+
+// ---------------------------------------------------------------------------
+// Migration helpers. The production database already exists on a mounted
+// volume, so new columns and one-off data changes must be applied in place -
+// CREATE TABLE IF NOT EXISTS never alters an existing table.
+// ---------------------------------------------------------------------------
+function addColumnIfMissing(table, column, definition) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function runOnce(key, fn) {
+  const done = db.prepare('SELECT 1 FROM schema_migrations WHERE key = ?').get(key);
+  if (done) return;
+  fn();
+  db.prepare('INSERT INTO schema_migrations (key) VALUES (?)').run(key);
+}
+
+// Columns added after the original release.
+addColumnIfMissing('opportunities', 'booking_url', 'TEXT');
+addColumnIfMissing('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
 
 // ---------------------------------------------------------------------------
 // Seed data. Runs once, on an empty database. Curriculum content below is an
@@ -272,5 +318,9 @@ function seed() {
 }
 
 seed();
+
+// One-off data migrations (apply to existing live databases too).
+const { seedExtraCurricula } = require('./extraCurricula');
+runOnce('extra-curricula-2026-06', () => seedExtraCurricula(db));
 
 module.exports = db;

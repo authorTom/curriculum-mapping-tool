@@ -18,6 +18,7 @@ export default function ManagerReport() {
     <div>
       <h1>Trust provision report</h1>
       <p className="lede">Where the Trust's QA-approved learning opportunities cover each curriculum — and where the gaps are.</p>
+      <p><a className="btn small secondary" href="/api/reports/provision.csv">⬇ Download full report (CSV)</a></p>
 
       <div className="stat-row">
         <div className="stat"><div className="n">{totals.opportunities}</div><div className="label">Approved opportunities</div></div>
