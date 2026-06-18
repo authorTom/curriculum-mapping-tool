@@ -97,7 +97,8 @@ export default function App() {
     return (
       <AuthContext.Provider value={{ user, setUser }}>
         <main className="auth-wrap">
-          <div className="brand-big">Curriculum Mapping Tool</div>
+          <img src="/logo.svg" alt="University Hospitals Birmingham NHS Foundation Trust" style={{ height: 52, marginBottom: 16, display: 'block' }} />
+          <div className="brand-big">Medical Academy Curriculum Mapping Tool</div>
           <ChangePassword forced onDone={(u) => setUser(u)} />
         </main>
       </AuthContext.Provider>
@@ -107,17 +108,23 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ user, setUser }}>
       <header className="site-header">
-        <NavLink to="/" className="brand" onClick={() => setMenuOpen(false)}>Curriculum Mapping Tool</NavLink>
-        <button className="nav-toggle" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>☰</button>
-        <nav className={menuOpen ? 'open' : ''} onClick={() => setMenuOpen(false)}>
-          {(NAV[user.role] || []).map(([to, label]) => (
-            <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>
-          ))}
-          <NavLink to="/account">Account</NavLink>
-          <a href="#" onClick={(e) => { e.preventDefault(); logout(); }} className="nav-signout">Sign out</a>
-        </nav>
-        <div className="spacer" />
-        <span className="who">{user.name} · {user.role}</span>
+        <div className="header-top">
+          <img className="trust-logo" src="/logo.svg" alt="University Hospitals Birmingham NHS Foundation Trust" />
+          <div className="spacer" />
+          <span className="who">{user.name} · {user.role}</span>
+          <button className="signout-desktop secondary small" onClick={logout}>Sign out</button>
+        </div>
+        <div className="header-nav">
+          <NavLink to="/" className="brand" onClick={() => setMenuOpen(false)}>Medical Academy Curriculum Mapping Tool</NavLink>
+          <button className="nav-toggle" aria-label="Menu" onClick={() => setMenuOpen((o) => !o)}>☰</button>
+          <nav className={menuOpen ? 'open' : ''} onClick={() => setMenuOpen(false)}>
+            {(NAV[user.role] || []).map(([to, label]) => (
+              <NavLink key={to} to={to} end={to === '/'}>{label}</NavLink>
+            ))}
+            <NavLink to="/account">Account</NavLink>
+            <a href="#" onClick={(e) => { e.preventDefault(); logout(); }} className="nav-signout">Sign out</a>
+          </nav>
+        </div>
       </header>
       <main>
         <Routes>

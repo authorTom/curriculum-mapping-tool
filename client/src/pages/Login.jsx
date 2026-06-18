@@ -33,7 +33,8 @@ export default function Login() {
 
   return (
     <div className="auth-wrap">
-      <div className="brand-big">Curriculum Mapping Tool</div>
+      <img src="/logo.svg" alt="University Hospitals Birmingham NHS Foundation Trust" style={{ height: 52, marginBottom: 16, display: 'block' }} />
+      <div className="brand-big">Medical Academy Curriculum Mapping Tool</div>
       <form className="panel" onSubmit={submit}>
         <h1>{mode === 'login' ? 'Sign in' : 'Request an account'}</h1>
         {message && <div className="success">{message}</div>}

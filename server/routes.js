@@ -487,6 +487,28 @@ router.get('/users', requireRole('admin'), (req, res) => {
   res.json({ users: rows });
 });
 
+// Admin manually creates a user account.
+router.post('/users', requireRole('admin'), (req, res) => {
+  const { name, email, role, status, grade, specialty, password } = req.body || {};
+  if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
+  const validRoles = ['trainee', 'educator', 'manager', 'qa', 'admin'];
+  const validStatus = ['pending', 'active', 'disabled'];
+  const r = validRoles.includes(role) ? role : 'trainee';
+  const s = validStatus.includes(status) ? status : 'active';
+  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim())) {
+    return res.status(409).json({ error: 'An account with that email already exists' });
+  }
+  let mustChange = 0, pw = password;
+  if (!pw || pw.length < 8) { pw = 'cmt-' + crypto.randomBytes(4).toString('hex'); mustChange = 1; }
+  const result = db.prepare(
+    `INSERT INTO users (name, email, password_hash, role, status, grade, specialty, must_change_password) VALUES (?,?,?,?,?,?,?,?)`
+  ).run(name.trim(), email.trim(), bcrypt.hashSync(pw, 10), r, s, grade || null, specialty || null, mustChange);
+  sendMail(email.trim(), 'An account has been created for you',
+    `An account has been created for you on the Medical Academy Curriculum Mapping Tool.` +
+    (mustChange ? ` Sign in with the temporary password "${pw}" and you'll be asked to choose your own.` : ''));
+  res.json({ id: result.lastInsertRowid, temporary_password: mustChange ? pw : null });
+});
+
 router.put('/users/:id', requireRole('admin'), (req, res) => {
   const { role, status } = req.body || {};
   const validRoles = ['trainee', 'educator', 'manager', 'qa', 'admin'];

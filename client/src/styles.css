@@ -25,34 +25,23 @@ body {
 
 a { color: var(--nhs-blue); }
 
-/* Header */
-.site-header {
-  background: var(--nhs-blue);
-  color: #fff;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
+/* Header: white logo strip above a blue navigation bar */
+.site-header { background: #fff; box-shadow: 0 1px 0 var(--border); }
+.header-top { display: flex; align-items: center; gap: 16px; padding: 10px 24px; }
+.trust-logo { height: 46px; width: auto; display: block; }
+.header-top .spacer { flex: 1; }
+.header-top .who { font-size: 0.85rem; color: var(--nhs-dark-grey); }
+.signout-desktop { margin-top: 0; }
+
+.header-nav {
+  background: var(--nhs-blue); color: #fff; padding: 0 24px;
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
-.site-header .brand {
-  font-weight: 700;
-  font-size: 1.15rem;
-  padding: 14px 0;
-  color: #fff;
-  text-decoration: none;
-}
-.site-header nav { display: flex; gap: 4px; flex-wrap: wrap; }
-.site-header nav a {
-  color: #fff;
-  text-decoration: none;
-  padding: 16px 12px;
-  font-size: 0.95rem;
-}
-.site-header nav a:hover { background: var(--nhs-dark-blue); }
-.site-header nav a.active { box-shadow: inset 0 -4px 0 var(--nhs-yellow); }
-.site-header .spacer { flex: 1; }
-.site-header .who { font-size: 0.85rem; opacity: 0.9; }
+.header-nav .brand { font-weight: 700; font-size: 1.05rem; padding: 12px 0; color: #fff; text-decoration: none; flex-shrink: 0; }
+.header-nav nav { display: flex; gap: 4px; flex-wrap: wrap; }
+.header-nav nav a { color: #fff; text-decoration: none; padding: 14px 12px; font-size: 0.95rem; }
+.header-nav nav a:hover { background: var(--nhs-dark-blue); }
+.header-nav nav a.active { box-shadow: inset 0 -4px 0 var(--nhs-yellow); }
 
 main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
 
@@ -165,23 +154,45 @@ a.btn.secondary { color: var(--text); }
 /* Let wide tables scroll horizontally on small screens instead of overflowing */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
+/* Two-column form layout (collapses to one column on mobile) */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; max-width: 720px; }
+
+/* Coverage bars on the provision report */
+.coverage-bar {
+  display: flex; height: 26px; border-radius: 5px; overflow: hidden;
+  border: 1px solid var(--border); background: #fff; max-width: 640px; margin: 6px 0;
+}
+.coverage-bar .seg { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.78rem; font-weight: 600; min-width: 0; transition: width 0.3s; }
+.coverage-bar .seg.covered { background: var(--nhs-green); }
+.coverage-bar .seg.pending { background: var(--nhs-yellow); color: #6b5200; }
+.coverage-bar .seg.gap { background: var(--nhs-red); }
+.coverage-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--nhs-dark-grey); margin: 8px 0 4px; }
+.coverage-legend span::before { content: ''; display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.coverage-legend .l-covered::before { background: var(--nhs-green); }
+.coverage-legend .l-pending::before { background: var(--nhs-yellow); }
+.coverage-legend .l-gap::before { background: var(--nhs-red); }
+.coverage-pct { font-weight: 700; color: var(--nhs-blue); }
+
 /* Mobile nav toggle (hidden on desktop) */
 .nav-toggle { display: none; background: transparent; box-shadow: none; color: #fff; font-size: 1.5rem; padding: 8px 12px; margin: 0; }
 .nav-signout { display: none; }
 
 @media (max-width: 720px) {
-  .site-header { flex-wrap: wrap; padding: 0 12px; position: relative; }
-  .site-header .brand { flex: 1; font-size: 1rem; }
-  .site-header .who { display: none; }
-  .site-header .spacer { display: none; }
-  .nav-toggle { display: block; order: 2; }
-  .site-header nav {
-    display: none; flex-direction: column; width: 100%; order: 3; background: var(--nhs-dark-blue);
+  .header-top { padding: 8px 12px; }
+  .trust-logo { height: 32px; }
+  .header-top .who { display: none; }
+  .signout-desktop { display: none; }
+
+  .header-nav { padding: 0 12px; position: relative; }
+  .header-nav .brand { flex: 1; font-size: 0.9rem; }
+  .nav-toggle { display: block; }
+  .header-nav nav {
+    display: none; flex-direction: column; width: 100%; background: var(--nhs-dark-blue);
     margin: 0 -12px; padding: 4px 0;
   }
-  .site-header nav.open { display: flex; }
-  .site-header nav a { padding: 12px 16px; width: 100%; }
-  .site-header nav a:hover { background: var(--nhs-blue); }
+  .header-nav nav.open { display: flex; }
+  .header-nav nav a { padding: 12px 16px; width: 100%; }
+  .header-nav nav a:hover { background: var(--nhs-blue); }
   .nav-signout { display: block; }
 
   main { padding: 16px 12px 56px; }
