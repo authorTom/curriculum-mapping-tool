@@ -67,27 +67,29 @@ export default function Portfolio() {
       {!showForm && <button onClick={() => setShowForm(true)}>+ Log new evidence</button>}
 
       {showForm && (
-        <form className="panel" onSubmit={submit}>
+        <form className="panel form-tidy" onSubmit={submit}>
           <h2 style={{ marginTop: 0 }}>Log evidence</h2>
           {error && <div className="error">{error}</div>}
-          <label>Curriculum
-            <select value={form.curriculum_id} onChange={set('curriculum_id')} required>
-              <option value="">— choose —</option>
-              {curricula.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </label>
-          <label>Capability
-            <select value={form.capability_id} onChange={set('capability_id')} required>
-              <option value="">— choose —</option>
-              {caps.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.title}</option>)}
-            </select>
-          </label>
-          <label>Date
-            <input type="date" value={form.log_date} onChange={set('log_date')} required />
-          </label>
-          <label>Title <span className="hint">e.g. "Acute take — 12 clerkings" or the name of a course attended</span>
-            <input type="text" value={form.title} onChange={set('title')} required />
-          </label>
+          <div className="form-grid">
+            <label>Curriculum
+              <select value={form.curriculum_id} onChange={set('curriculum_id')} required>
+                <option value="">— choose —</option>
+                {curricula.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </label>
+            <label>Capability
+              <select value={form.capability_id} onChange={set('capability_id')} required>
+                <option value="">— choose —</option>
+                {caps.map((c) => <option key={c.id} value={c.id}>{c.code} — {c.title}</option>)}
+              </select>
+            </label>
+            <label>Date
+              <input type="date" value={form.log_date} onChange={set('log_date')} required />
+            </label>
+            <label>Title <span className="hint">e.g. "Acute take — 12 clerkings" or a course name</span>
+              <input type="text" value={form.title} onChange={set('title')} required />
+            </label>
+          </div>
           <label>Reflection <span className="hint">optional</span>
             <textarea value={form.reflection} onChange={set('reflection')} />
           </label>

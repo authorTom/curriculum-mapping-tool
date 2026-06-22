@@ -69,43 +69,46 @@ export default function OpportunityForm() {
       <p className="lede">Describe the opportunity and map it to every curriculum capability it helps trainees meet. It will be visible to trainees once approved by the QA team.</p>
       {error && <div className="error">{error}</div>}
 
-      <form className="panel" onSubmit={submit}>
+      <form className="panel form-tidy" onSubmit={submit}>
         <label>Title *
           <input type="text" value={form.title} onChange={set('title')} required />
         </label>
         <label>Description <span className="hint">what happens, what learners will get out of it, how to book</span>
           <textarea value={form.description} onChange={set('description')} />
         </label>
-        <label>Type *
-          <select value={form.type} onChange={set('type')} required>
-            <option value="">— choose —</option>
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </label>
-        <label>Specialty
-          <input type="text" value={form.specialty} onChange={set('specialty')} placeholder="e.g. Acute Medicine, Cross-specialty" />
-        </label>
-        <label>Site / location
-          <input type="text" value={form.site} onChange={set('site')} placeholder="e.g. Education Centre, Main Site" />
-        </label>
-        <label>Schedule / frequency
-          <input type="text" value={form.schedule} onChange={set('schedule')} placeholder='e.g. "Monthly, first Wednesday 09:00-13:00"' />
-        </label>
-        <label>Capacity
-          <input type="text" value={form.capacity} onChange={set('capacity')} placeholder='e.g. "8 per session" or "Drop-in"' />
-        </label>
-        <label>Intended audience
-          <input type="text" value={form.audience} onChange={set('audience')} placeholder="e.g. FY1-IMT3, final-year students" />
-        </label>
-        <label>Lead educator name
-          <input type="text" value={form.lead_name} onChange={set('lead_name')} />
-        </label>
-        <label>Lead educator email
-          <input type="email" value={form.lead_email} onChange={set('lead_email')} />
-        </label>
-        <label>Booking / information link <span className="hint">a web address trainees can click to book or read more (e.g. an intranet or booking-system page)</span>
-          <input type="text" value={form.booking_url} onChange={set('booking_url')} placeholder="https://…" />
-        </label>
+
+        <div className="form-grid">
+          <label>Type *
+            <select value={form.type} onChange={set('type')} required>
+              <option value="">— choose —</option>
+              {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Specialty
+            <input type="text" value={form.specialty} onChange={set('specialty')} placeholder="e.g. Acute Medicine" />
+          </label>
+          <label>Site / location
+            <input type="text" value={form.site} onChange={set('site')} placeholder="e.g. Education Centre, Main Site" />
+          </label>
+          <label>Schedule / frequency
+            <input type="text" value={form.schedule} onChange={set('schedule')} placeholder='e.g. "Monthly, first Wednesday"' />
+          </label>
+          <label>Capacity
+            <input type="text" value={form.capacity} onChange={set('capacity')} placeholder='e.g. "8 per session"' />
+          </label>
+          <label>Intended audience
+            <input type="text" value={form.audience} onChange={set('audience')} placeholder="e.g. FY1-IMT3" />
+          </label>
+          <label>Lead educator name
+            <input type="text" value={form.lead_name} onChange={set('lead_name')} />
+          </label>
+          <label>Lead educator email
+            <input type="email" value={form.lead_email} onChange={set('lead_email')} />
+          </label>
+          <label className="span-2">Booking / information link <span className="hint">a web address trainees can click to book or read more (e.g. an intranet or booking-system page)</span>
+            <input type="text" value={form.booking_url} onChange={set('booking_url')} placeholder="https://…" />
+          </label>
+        </div>
 
         <label>Curriculum capabilities * <span className="hint">tick every capability this opportunity helps meet — across any curriculum, undergraduate to consultant ({selectedCaps.size} selected)</span></label>
         <div className="cap-picker">

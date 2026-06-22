@@ -155,7 +155,14 @@ a.btn.secondary { color: var(--text); }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 /* Two-column form layout (collapses to one column on mobile) */
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; max-width: 720px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+.form-grid .span-2 { grid-column: 1 / -1; }
+
+/* Tidy forms: constrain width and make every control fill it, so labels and
+   fields line up to the same left and right edges. */
+.form-tidy { max-width: 780px; }
+.form-tidy input:not([type="checkbox"]), .form-tidy select, .form-tidy textarea,
+.form-tidy .cap-picker, .form-tidy .form-grid { width: 100%; max-width: 100%; }
 
 /* Coverage bars on the provision report */
 .coverage-bar {
@@ -201,4 +208,5 @@ a.btn.secondary { color: var(--text); }
   input[type="text"], input[type="email"], input[type="password"], input[type="date"], select, textarea { max-width: 100%; }
   .filters > div { min-width: 140px; flex: 1 1 140px; }
   .grid { grid-template-columns: 1fr; }
+  .form-grid { grid-template-columns: 1fr; }
 }
