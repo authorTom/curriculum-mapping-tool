@@ -4,6 +4,11 @@ client/dist
 data
 .git
 .gitignore
+.github
+.claude
+.env
+.env.local
+compose.yaml
 *.log
 .DS_Store
 npm-debug.log*

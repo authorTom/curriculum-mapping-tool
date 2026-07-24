@@ -7,6 +7,18 @@ const { sendMail } = require('./mailer');
 
 const router = express.Router();
 
+// Unauthenticated liveness probe for the Docker HEALTHCHECK, compose and any
+// reverse proxy in front. Touches the database so a wedged SQLite file fails
+// the check rather than reporting healthy.
+router.get('/health', (req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    res.status(503).json({ status: 'error' });
+  }
+});
+
 // Email helpers ------------------------------------------------------------
 function adminEmails() {
   return db.prepare("SELECT email FROM users WHERE role = 'admin' AND status = 'active'").all().map((u) => u.email);
