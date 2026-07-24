@@ -4,3 +4,7 @@ client/dist/
 data/
 *.log
 .DS_Store
+
+# Local Compose configuration; .env.example is the tracked template.
+.env
+.env.local

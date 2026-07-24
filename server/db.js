@@ -3,6 +3,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 
 // DATA_DIR lets the SQLite database live on a mounted persistent volume in
@@ -136,6 +137,11 @@ addColumnIfMissing('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0'
 // Seed data. Runs once, on an empty database. Curriculum content below is an
 // ABRIDGED SAMPLE for demonstration - verify against the official published
 // curricula before clinical-education use.
+//
+// The demo accounts all share a published password, so seeding is opt-in via
+// CMT_SEED_DEMO. It defaults ON for a source checkout (`npm start`), which is
+// the behaviour the README describes, and is turned OFF in the Docker image so
+// that a container published to a network never boots with known credentials.
 // ---------------------------------------------------------------------------
 function seed() {
   const userCount = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
@@ -317,10 +323,47 @@ function seed() {
   console.log('Database seeded with demo users (password: demo1234), sample curricula and opportunities.');
 }
 
-seed();
+// ---------------------------------------------------------------------------
+// First-run bootstrap. Without demo seeding an empty database has no accounts,
+// and self-registration creates users as 'pending' with nobody able to approve
+// them - so a real admin is created instead. Credentials come from
+// ADMIN_EMAIL/ADMIN_PASSWORD; a missing password is generated and printed once
+// to the container log, and either way the account must change it at first
+// sign-in.
+// ---------------------------------------------------------------------------
+function bootstrapAdmin() {
+  if (db.prepare('SELECT COUNT(*) AS n FROM users').get().n > 0) return;
+
+  const email = process.env.ADMIN_EMAIL || 'admin@localhost';
+  const generated = !process.env.ADMIN_PASSWORD;
+  const password = process.env.ADMIN_PASSWORD || crypto.randomBytes(12).toString('base64url');
+
+  db.prepare(
+    `INSERT INTO users (name, email, password_hash, role, status, must_change_password)
+     VALUES (?,?,?,'admin','active',1)`
+  ).run('Administrator', email, bcrypt.hashSync(password, 10));
+
+  console.log(`Created first admin account: ${email}`);
+  if (generated) {
+    console.log(`Generated password (shown once, change it at first sign-in): ${password}`);
+    console.log('Set ADMIN_EMAIL and ADMIN_PASSWORD to choose these yourself.');
+  }
+}
+
+const seedDemo = String(process.env.CMT_SEED_DEMO ?? 'true').toLowerCase() !== 'false';
+const freshDatabase = db.prepare('SELECT COUNT(*) AS n FROM curricula').get().n === 0;
+
+if (seedDemo) seed();
+bootstrapAdmin();
 
 // One-off data migrations (apply to existing live databases too).
 const { seedExtraCurricula } = require('./extraCurricula');
-runOnce('extra-curricula-2026-06', () => seedExtraCurricula(db));
+if (seedDemo || !freshDatabase) {
+  runOnce('extra-curricula-2026-06', () => seedExtraCurricula(db));
+} else {
+  // Nothing to expand on a database that was never seeded with the samples.
+  // Recorded as applied so it cannot fire later against real curriculum data.
+  runOnce('extra-curricula-2026-06', () => {});
+}
 
 module.exports = db;
