@@ -5,6 +5,7 @@ import { useAuth } from '../App';
 import Stars from '../components/Stars';
 
 const QA_TAG = { approved: ['green', 'QA approved'], pending: ['amber', 'Awaiting QA'], rejected: ['red', 'Rejected'] };
+const qaTag = (status) => QA_TAG[status] || ['', status];
 
 export default function Browse() {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export default function Browse() {
   const [opps, setOpps] = useState([]);
   const [curricula, setCurricula] = useState([]);
   const [types, setTypes] = useState([]);
+  const [error, setError] = useState('');
 
   const filters = {
     q: params.get('q') || '',
@@ -21,22 +23,41 @@ export default function Browse() {
   };
 
   useEffect(() => {
-    api.get('/curricula').then((d) => setCurricula(d.curricula));
-    api.get('/opportunities/types').then((d) => setTypes(d.types));
+    api.get('/curricula').then((d) => setCurricula(d.curricula)).catch(() => {});
+    api.get('/opportunities/types').then((d) => setTypes(d.types)).catch(() => {});
   }, []);
 
   useEffect(() => {
     const qs = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => v && qs.set(k, v));
-    api.get(`/opportunities?${qs}`).then((d) => setOpps(d.opportunities));
+    api.get(`/opportunities?${qs}`)
+      .then((d) => { setOpps(d.opportunities); setError(''); })
+      .catch((e) => { setOpps([]); setError(e.message); });
   }, [params]);
 
+  // Updates from the previous params rather than the ones captured at render,
+  // so a filter changed while the debounced search is still pending is not
+  // clobbered when that timer fires.
   const setFilter = (k) => (e) => {
-    const next = new URLSearchParams(params);
-    if (e.target.value) next.set(k, e.target.value); else next.delete(k);
-    if (k !== 'capability_id') next.delete('capability_id');
-    setParams(next, { replace: true });
+    const { value } = e.target;
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(k, value); else next.delete(k);
+      if (k !== 'capability_id') next.delete('capability_id');
+      return next;
+    }, { replace: true });
   };
+
+  // The search box is typed into a character at a time, so it keeps its own
+  // state and only pushes into the URL (and therefore the API) once typing
+  // pauses - otherwise every keystroke is a query across every opportunity.
+  const [search, setSearch] = useState(filters.q);
+  useEffect(() => { setSearch(params.get('q') || ''); }, [params]);
+  useEffect(() => {
+    if (search === (params.get('q') || '')) return;
+    const timer = setTimeout(() => setFilter('q')({ target: { value: search } }), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const seesQaStatus = ['educator', 'qa', 'manager', 'admin'].includes(user.role);
 
@@ -52,7 +73,7 @@ export default function Browse() {
       <div className="filters">
         <div>
           <label>Search</label>
-          <input type="text" value={filters.q} onChange={setFilter('q')} placeholder="title, specialty…" />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="title, specialty…" />
         </div>
         <div>
           <label>Curriculum</label>
@@ -76,7 +97,8 @@ export default function Browse() {
         )}
       </div>
 
-      {opps.length === 0 && <p className="muted">No opportunities match these filters yet.</p>}
+      {error && <div className="error">{error}</div>}
+      {!error && opps.length === 0 && <p className="muted">No opportunities match these filters yet.</p>}
       <div className="grid">
         {opps.map((o) => (
           <div className="card" key={o.id}>
@@ -86,7 +108,7 @@ export default function Browse() {
             <div style={{ marginTop: 6 }}>
               <span className="tag">{o.capability_count} capabilit{o.capability_count === 1 ? 'y' : 'ies'} mapped</span>
               {seesQaStatus && o.qa_status && (
-                <span className={`tag ${QA_TAG[o.qa_status][0]}`}>{QA_TAG[o.qa_status][1]}</span>
+                <span className={`tag ${qaTag(o.qa_status)[0]}`}>{qaTag(o.qa_status)[1]}</span>
               )}
               {o.rating_count > 0 && <Stars value={o.rating_avg} count={o.rating_count} small />}
             </div>

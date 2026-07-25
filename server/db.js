@@ -107,6 +107,18 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   key TEXT PRIMARY KEY,
   applied_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- The provision report and the trainee gap analysis run a correlated subquery
+-- per capability, each one counting rows in these tables by foreign key. Without
+-- these indexes every count is a full table scan, and the report is the slowest
+-- page in the app once a Trust has a few thousand portfolio entries.
+CREATE INDEX IF NOT EXISTS idx_capabilities_curriculum ON capabilities(curriculum_id);
+CREATE INDEX IF NOT EXISTS idx_opp_caps_capability ON opportunity_capabilities(capability_id);
+CREATE INDEX IF NOT EXISTS idx_logs_capability ON portfolio_logs(capability_id);
+CREATE INDEX IF NOT EXISTS idx_logs_user ON portfolio_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_ratings_opportunity ON ratings(opportunity_id);
+CREATE INDEX IF NOT EXISTS idx_opportunities_created_by ON opportunities(created_by);
+CREATE INDEX IF NOT EXISTS idx_opportunities_qa_status ON opportunities(qa_status);
 `);
 
 // ---------------------------------------------------------------------------
@@ -291,12 +303,14 @@ function seed() {
     },
   ];
 
+  const oppIdByTitle = {};
   for (const o of opps) {
     const r = insertOpp.run(
       o.title, o.description, o.type, o.specialty, o.site, o.schedule, o.capacity, o.audience,
       'Demo Educator', 'educator@demo.nhs.uk', educator.lastInsertRowid,
       o.qa, o.qa === 'approved' ? qa.lastInsertRowid : null, o.qa === 'approved' ? '2026-05-20' : null
     );
+    oppIdByTitle[o.title] = r.lastInsertRowid;
     for (const [cur, code] of o.caps) linkCap.run(r.lastInsertRowid, capId(cur, code));
   }
 
@@ -305,13 +319,13 @@ function seed() {
   const insertLog = db.prepare(
     `INSERT INTO portfolio_logs (user_id, capability_id, opportunity_id, log_date, title, reflection) VALUES (?,?,?,?,?,?)`
   );
-  insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 1'), 1, '2026-04-14',
+  insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 1'), oppIdByTitle['Acute Medicine Simulation: The Deteriorating Patient'], '2026-04-14',
     'Deteriorating patient simulation', 'Led the sim scenario for a patient with sepsis; debrief highlighted earlier escalation to critical care.');
   insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 1'), null, '2026-05-02',
     'Acute take - 12 clerkings', 'Unselected take including DKA and upper GI bleed; discussed management with consultant on post-take round.');
   insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 2'), null, '2026-05-10',
     'Ward cover weekend', 'Managed deteriorating inpatients across two wards; handover and escalation went well.');
-  insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 8'), 4, '2026-05-21',
+  insertLog.run(trainee.lastInsertRowid, capId(imt, 'CiP 8'), oppIdByTitle['Quality Improvement Project Clinic'], '2026-05-21',
     'QI project: VTE assessment compliance', 'First PDSA cycle complete with governance team support.');
 
   console.log('Database seeded with demo users (password: demo1234), sample curricula and opportunities.');
