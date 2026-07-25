@@ -5,6 +5,7 @@ import { useAuth } from '../App';
 import Stars from '../components/Stars';
 
 const QA_TAG = { approved: ['green', 'QA approved'], pending: ['amber', 'Awaiting QA review'], rejected: ['red', 'Rejected by QA'] };
+const qaTag = (status) => QA_TAG[status] || ['', status];
 
 export default function OpportunityDetail() {
   const { id } = useParams();
@@ -14,6 +15,7 @@ export default function OpportunityDetail() {
   const [ratings, setRatings] = useState({ ratings: [], mine: null });
   const [myRating, setMyRating] = useState(0);
   const [myComment, setMyComment] = useState('');
+  const [actionError, setActionError] = useState('');
 
   function loadOpp() { api.get(`/opportunities/${id}`).then((d) => setOpp(d.opportunity)).catch((e) => setError(e.message)); }
   useEffect(() => { loadOpp(); }, [id]);
@@ -32,16 +34,25 @@ export default function OpportunityDetail() {
   const isApproved = opp.qa_status === 'approved';
 
   async function toggleBookmark() {
-    const d = await api.post(`/opportunities/${opp.id}/bookmark`);
-    setOpp({ ...opp, is_bookmarked: d.bookmarked });
+    setActionError('');
+    try {
+      const d = await api.post(`/opportunities/${opp.id}/bookmark`);
+      setOpp({ ...opp, is_bookmarked: d.bookmarked });
+    } catch (err) {
+      setActionError(err.message);
+    }
   }
   async function submitRating(e) {
     e.preventDefault();
     if (!myRating) return;
-    await api.post(`/opportunities/${opp.id}/rating`, { rating: myRating, comment: myComment });
-    const d = await api.get(`/opportunities/${opp.id}/ratings`);
-    setRatings(d);
-    loadOpp();
+    setActionError('');
+    try {
+      await api.post(`/opportunities/${opp.id}/rating`, { rating: myRating, comment: myComment });
+      setRatings(await api.get(`/opportunities/${opp.id}/ratings`));
+      loadOpp();
+    } catch (err) {
+      setActionError(err.message);
+    }
   }
 
   const facts = [
@@ -55,10 +66,12 @@ export default function OpportunityDetail() {
       <p><Link to="/browse">← All opportunities</Link></p>
       <h1>{opp.title}</h1>
       <div style={{ margin: '6px 0 16px' }} className="detail-badges">
-        {seesQa && <span className={`tag ${QA_TAG[opp.qa_status][0]}`}>{QA_TAG[opp.qa_status][1]}</span>}
+        {seesQa && <span className={`tag ${qaTag(opp.qa_status)[0]}`}>{qaTag(opp.qa_status)[1]}</span>}
         {!opp.active && <span className="tag red">Inactive</span>}
         {opp.rating_count > 0 && <Stars value={opp.rating_avg} count={opp.rating_count} small />}
       </div>
+
+      {actionError && <div className="error">{actionError}</div>}
 
       {isApproved && (
         <div className="action-bar">

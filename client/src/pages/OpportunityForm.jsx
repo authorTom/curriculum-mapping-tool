@@ -19,10 +19,12 @@ export default function OpportunityForm() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.get('/curricula').then(async (d) => {
-      const full = await Promise.all(d.curricula.map((c) => api.get(`/curricula/${c.id}`)));
-      setCurricula(full);
-    });
+    api.get('/curricula')
+      .then(async (d) => {
+        const full = await Promise.all(d.curricula.map((c) => api.get(`/curricula/${c.id}`)));
+        setCurricula(full);
+      })
+      .catch((e) => setError(e.message));
     if (id) {
       api.get(`/opportunities/${id}`).then((d) => {
         const o = d.opportunity;

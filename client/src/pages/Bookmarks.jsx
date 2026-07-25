@@ -5,9 +5,13 @@ import Stars from '../components/Stars';
 
 export default function Bookmarks() {
   const [opps, setOpps] = useState(null);
+  const [error, setError] = useState('');
 
-  useEffect(() => { api.get('/bookmarks').then((d) => setOpps(d.opportunities)); }, []);
+  useEffect(() => {
+    api.get('/bookmarks').then((d) => setOpps(d.opportunities)).catch((e) => setError(e.message));
+  }, []);
 
+  if (error) return <div className="error">{error}</div>;
   if (!opps) return null;
   return (
     <div>

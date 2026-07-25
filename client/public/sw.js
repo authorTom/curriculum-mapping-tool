@@ -21,10 +21,22 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(request)
       .then((resp) => {
-        const copy = resp.clone();
-        caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+        // Only keep successful responses - caching a 404 or a 500 would serve
+        // that error back for as long as the app stays offline.
+        if (resp.ok && resp.type === 'basic') {
+          const copy = resp.clone();
+          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+        }
         return resp;
       })
-      .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
+      .catch(async () => {
+        // respondWith rejects the navigation if it resolves to undefined, so
+        // there is always a real Response at the end of this chain.
+        const cached = (await caches.match(request)) || (await caches.match('/'));
+        return cached || new Response(
+          '<h1>Offline</h1><p>This page has not been opened before, so it is not available offline.</p>',
+          { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
+      })
   );
 });

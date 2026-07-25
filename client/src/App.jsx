@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate, useNavigate } from 'react-router-dom';
-import { api } from './api';
+import { api, setUnauthorizedHandler } from './api';
 import Login from './pages/Login';
 import TraineeDashboard from './pages/TraineeDashboard';
 import Portfolio from './pages/Portfolio';
@@ -51,6 +51,21 @@ const NAV = {
   ],
 };
 
+// Who the API will actually serve each page to. Without these guards a trainee
+// following a stale link to /qa gets a page whose data request fails silently -
+// an empty review queue reading "nothing awaiting review". The server remains
+// the enforcement point; this only keeps the UI honest.
+const AUTHORS = ['educator', 'admin'];
+const REVIEWERS = ['qa', 'admin'];
+const REPORT_VIEWERS = ['manager', 'admin', 'qa'];
+const ADMINS = ['admin'];
+
+function RequireRole({ roles, children }) {
+  const { user } = useAuth();
+  if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  return children;
+}
+
 function Home() {
   const { user } = useAuth();
   switch (user.role) {
@@ -70,8 +85,12 @@ export default function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // A session that expires mid-visit sends every later request to 401; drop
+    // straight back to the sign-in screen rather than showing empty pages.
+    setUnauthorizedHandler(() => setUser(null));
     api.get('/auth/me')
       .then((d) => setUser(d.user))
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, []);
 
@@ -132,13 +151,13 @@ export default function App() {
           <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/browse" element={<Browse />} />
           <Route path="/bookmarks" element={<Bookmarks />} />
-          <Route path="/opportunities/new" element={<OpportunityForm />} />
-          <Route path="/opportunities/:id/edit" element={<OpportunityForm />} />
+          <Route path="/opportunities/new" element={<RequireRole roles={AUTHORS}><OpportunityForm /></RequireRole>} />
+          <Route path="/opportunities/:id/edit" element={<RequireRole roles={AUTHORS}><OpportunityForm /></RequireRole>} />
           <Route path="/opportunities/:id" element={<OpportunityDetail />} />
-          <Route path="/qa" element={<QAQueue />} />
-          <Route path="/provision" element={<ManagerReport />} />
-          <Route path="/curricula" element={<AdminCurricula />} />
-          <Route path="/import" element={<AdminImport />} />
+          <Route path="/qa" element={<RequireRole roles={REVIEWERS}><QAQueue /></RequireRole>} />
+          <Route path="/provision" element={<RequireRole roles={REPORT_VIEWERS}><ManagerReport /></RequireRole>} />
+          <Route path="/curricula" element={<RequireRole roles={ADMINS}><AdminCurricula /></RequireRole>} />
+          <Route path="/import" element={<RequireRole roles={ADMINS}><AdminImport /></RequireRole>} />
           <Route path="/account" element={<Account />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

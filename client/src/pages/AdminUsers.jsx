@@ -14,7 +14,7 @@ export default function AdminUsers() {
   const [form, setForm] = useState(EMPTY_NEW);
   const setF = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
-  const load = () => api.get('/users').then((d) => setUsers(d.users));
+  const load = () => api.get('/users').then((d) => setUsers(d.users)).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   async function addUser(e) {

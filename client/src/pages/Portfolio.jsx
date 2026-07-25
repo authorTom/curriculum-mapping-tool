@@ -20,12 +20,15 @@ export default function Portfolio() {
   });
   const [error, setError] = useState('');
 
-  const load = () => api.get('/logs').then((d) => setLogs(d.logs));
-  useEffect(() => { load(); api.get('/curricula').then((d) => setCurricula(d.curricula)); }, []);
+  const load = () => api.get('/logs').then((d) => setLogs(d.logs)).catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
+    api.get('/curricula').then((d) => setCurricula(d.curricula)).catch((e) => setError(e.message));
+  }, []);
 
   useEffect(() => {
     if (!form.curriculum_id) { setCaps([]); return; }
-    api.get(`/curricula/${form.curriculum_id}`).then((d) => setCaps(d.capabilities));
+    api.get(`/curricula/${form.curriculum_id}`).then((d) => setCaps(d.capabilities)).catch((e) => setError(e.message));
   }, [form.curriculum_id]);
 
   // If arriving from an opportunity page with a capability preselected, find its curriculum.
@@ -55,8 +58,13 @@ export default function Portfolio() {
 
   async function remove(id) {
     if (!confirm('Delete this portfolio entry?')) return;
-    await api.del(`/logs/${id}`);
-    load();
+    setError('');
+    try {
+      await api.del(`/logs/${id}`);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
