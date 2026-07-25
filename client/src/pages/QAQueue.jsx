@@ -7,7 +7,11 @@ export default function QAQueue() {
   const [comments, setComments] = useState({});
   const [error, setError] = useState('');
 
-  const load = () => api.get('/qa/queue').then((d) => setOpps(d.opportunities));
+  const [loaded, setLoaded] = useState(false);
+  const load = () => api.get('/qa/queue')
+    .then((d) => setOpps(d.opportunities))
+    .catch((e) => setError(e.message))
+    .finally(() => setLoaded(true));
   useEffect(() => { load(); }, []);
 
   async function review(id, decision) {
@@ -26,7 +30,7 @@ export default function QAQueue() {
       <p className="lede">New and edited learning opportunities awaiting quality assurance. Approved items become visible to trainees; rejections are returned to the educator with your feedback.</p>
       {error && <div className="error">{error}</div>}
 
-      {opps.length === 0 && <div className="success">The queue is clear — nothing awaiting review.</div>}
+      {loaded && !error && opps.length === 0 && <div className="success">The queue is clear — nothing awaiting review.</div>}
 
       {opps.map((o) => (
         <div className="card" key={o.id}>

@@ -33,11 +33,13 @@ function CoverageBar({ covered, pending, gap, total }) {
 export default function ManagerReport() {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState({});
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/reports/provision').then(setData);
+    api.get('/reports/provision').then(setData).catch((e) => setError(e.message));
   }, []);
 
+  if (error) return <div className="error">{error}</div>;
   if (!data) return null;
   const { report, totals } = data;
   const totalGaps = report.reduce((n, r) => n + r.gaps, 0);

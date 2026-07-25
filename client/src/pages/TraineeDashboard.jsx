@@ -10,7 +10,7 @@ export default function TraineeDashboard() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/curricula').then((d) => setCurricula(d.curricula));
+    api.get('/curricula').then((d) => setCurricula(d.curricula)).catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
@@ -21,8 +21,13 @@ export default function TraineeDashboard() {
 
   async function chooseCurriculum(e) {
     const id = e.target.value || null;
-    const d = await api.put('/auth/me', { curriculum_id: id, grade: user.grade, specialty: user.specialty });
-    setUser(d.user);
+    setError('');
+    try {
+      const d = await api.put('/auth/me', { curriculum_id: id, grade: user.grade, specialty: user.specialty });
+      setUser(d.user);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   const gaps = (caps || []).filter((c) => c.my_log_count === 0);
