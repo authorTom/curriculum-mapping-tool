@@ -12,12 +12,17 @@ export default function AdminCurricula() {
   const [capForm, setCapForm] = useState(null);   // null | capability being edited/created
   const [error, setError] = useState('');
 
-  const load = () => api.get('/curricula').then((d) => setCurricula(d.curricula));
+  const load = () => api.get('/curricula').then((d) => setCurricula(d.curricula)).catch((e) => setError(e.message));
   useEffect(() => { load(); }, []);
 
   async function openCurriculum(id) {
-    setSelected(await api.get(`/curricula/${id}`));
-    setCapForm(null);
+    setError('');
+    try {
+      setSelected(await api.get(`/curricula/${id}`));
+      setCapForm(null);
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function saveCurriculum(e) {
@@ -32,9 +37,14 @@ export default function AdminCurricula() {
 
   async function deleteCurriculum(c) {
     if (!confirm(`Delete "${c.name}" and all its capabilities? Mapped opportunities lose these mappings. This cannot be undone.`)) return;
-    await api.del(`/curricula/${c.id}`);
-    if (selected?.curriculum.id === c.id) setSelected(null);
-    load();
+    setError('');
+    try {
+      await api.del(`/curricula/${c.id}`);
+      if (selected?.curriculum.id === c.id) setSelected(null);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   async function saveCapability(e) {
@@ -50,9 +60,14 @@ export default function AdminCurricula() {
 
   async function deleteCapability(cap) {
     if (!confirm(`Delete capability ${cap.code}? Portfolio logs and opportunity mappings against it will be removed.`)) return;
-    await api.del(`/capabilities/${cap.id}`);
-    openCurriculum(selected.curriculum.id);
-    load();
+    setError('');
+    try {
+      await api.del(`/capabilities/${cap.id}`);
+      openCurriculum(selected.curriculum.id);
+      load();
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (

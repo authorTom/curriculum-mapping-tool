@@ -28,6 +28,25 @@ function qaEmails() {
 }
 
 // ---------------------------------------------------------------------------
+// Input helpers. JSON bodies are attacker-controlled and every field can be any
+// type, so nothing is passed to .trim() (or to SQLite) before being normalised
+// to a string - otherwise a stray number or object becomes a 500.
+// ---------------------------------------------------------------------------
+function text(v) {
+  if (typeof v === 'string') return v.trim();
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return '';
+}
+// Deliberately permissive: enough to catch typos and non-addresses, without
+// rejecting the valid-but-unusual addresses a real organisation throws at it.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const STAGES = ['undergraduate', 'foundation', 'core', 'higher', 'consultant'];
+const ROLES = ['trainee', 'educator', 'manager', 'qa', 'admin'];
+const STATUSES = ['pending', 'active', 'disabled'];
+const QA_STATUSES = ['pending', 'approved', 'rejected'];
+
+// ---------------------------------------------------------------------------
 // Auth helpers
 // ---------------------------------------------------------------------------
 function currentUser(req) {
@@ -62,29 +81,66 @@ function publicUser(u) {
 // Auth
 // ---------------------------------------------------------------------------
 router.post('/auth/register', (req, res) => {
-  const { name, email, password, requestedRole, grade, specialty } = req.body || {};
+  const b = req.body || {};
+  const name = text(b.name), email = text(b.email);
+  const password = typeof b.password === 'string' ? b.password : '';
   if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
-  const validRoles = ['trainee', 'educator', 'manager', 'qa'];
-  const role = validRoles.includes(requestedRole) ? requestedRole : 'trainee';
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim());
+  // Self-registration cannot request admin; an admin can promote later.
+  const role = ROLES.includes(b.requestedRole) && b.requestedRole !== 'admin' ? b.requestedRole : 'trainee';
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) return res.status(409).json({ error: 'An account with that email already exists' });
   db.prepare(
     `INSERT INTO users (name, email, password_hash, role, status, grade, specialty) VALUES (?,?,?,?, 'pending', ?, ?)`
-  ).run(name.trim(), email.trim(), bcrypt.hashSync(password, 10), role, grade || null, specialty || null);
+  ).run(name, email, bcrypt.hashSync(password, 10), role, text(b.grade) || null, text(b.specialty) || null);
   sendMail(adminEmails(), 'New account awaiting approval',
-    `${name.trim()} (${email.trim()}) has requested a ${role} account and is awaiting approval.`);
+    `${name} (${email}) has requested a ${role} account and is awaiting approval.`);
   res.json({ ok: true, message: 'Registration received. An administrator will approve your account.' });
 });
 
+// Sign-in throttle. Passwords are the only thing guarding real trainee records,
+// so an unauthenticated caller does not get unlimited guesses. Per email+IP and
+// held in memory: it resets on restart, which is fine for slowing down guessing
+// (a determined attacker needs a distributed effort either way).
+const LOGIN_MAX_ATTEMPTS = 10;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const loginAttempts = new Map();
+
+function loginKey(req, email) {
+  return `${req.ip}|${email.toLowerCase()}`;
+}
+function throttled(key) {
+  const entry = loginAttempts.get(key);
+  if (!entry) return false;
+  if (Date.now() - entry.first > LOGIN_WINDOW_MS) { loginAttempts.delete(key); return false; }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+function recordFailure(key) {
+  const entry = loginAttempts.get(key);
+  if (!entry || Date.now() - entry.first > LOGIN_WINDOW_MS) loginAttempts.set(key, { count: 1, first: Date.now() });
+  else entry.count++;
+  // Opportunistic sweep so the map cannot grow without bound.
+  if (loginAttempts.size > 5000) {
+    for (const [k, v] of loginAttempts) if (Date.now() - v.first > LOGIN_WINDOW_MS) loginAttempts.delete(k);
+  }
+}
+
 router.post('/auth/login', (req, res) => {
-  const { email, password } = req.body || {};
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get((email || '').trim());
-  if (!user || !bcrypt.compareSync(password || '', user.password_hash)) {
+  const email = text((req.body || {}).email);
+  const password = typeof (req.body || {}).password === 'string' ? req.body.password : '';
+  const key = loginKey(req, email);
+  if (throttled(key)) {
+    return res.status(429).json({ error: 'Too many sign-in attempts. Wait 15 minutes and try again.' });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+    recordFailure(key);
     return res.status(401).json({ error: 'Invalid email or password' });
   }
   if (user.status === 'pending') return res.status(403).json({ error: 'Your account is awaiting administrator approval' });
   if (user.status !== 'active') return res.status(403).json({ error: 'Your account has been disabled' });
+  loginAttempts.delete(key);
   req.session.userId = user.id;
   res.json({ user: publicUser(user) });
 });
@@ -101,19 +157,26 @@ router.get('/auth/me', (req, res) => {
 // Trainees set the curriculum they are working towards.
 router.put('/auth/me', requireAuth, (req, res) => {
   const { curriculum_id, grade, specialty } = req.body || {};
+  let curriculumId = null;
+  if (curriculum_id) {
+    const cur = db.prepare('SELECT id FROM curricula WHERE id = ?').get(Number(curriculum_id));
+    if (!cur) return res.status(400).json({ error: 'Curriculum not found' });
+    curriculumId = cur.id;
+  }
   db.prepare('UPDATE users SET curriculum_id = ?, grade = ?, specialty = ? WHERE id = ?')
-    .run(curriculum_id || null, grade || null, specialty || null, req.user.id);
+    .run(curriculumId, text(grade) || null, text(specialty) || null, req.user.id);
   res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
 });
 
 // Self-service password change. Clears any admin-forced change flag.
 router.post('/auth/change-password', requireAuth, (req, res) => {
-  const { current_password, new_password } = req.body || {};
-  if (!new_password || new_password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  const current_password = typeof (req.body || {}).current_password === 'string' ? req.body.current_password : '';
+  const new_password = typeof (req.body || {}).new_password === 'string' ? req.body.new_password : '';
+  if (new_password.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
   const fresh = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   // Users forced to change at next login don't need their (temporary) current password.
   if (!fresh.must_change_password) {
-    if (!bcrypt.compareSync(current_password || '', fresh.password_hash)) {
+    if (!bcrypt.compareSync(current_password, fresh.password_hash)) {
       return res.status(400).json({ error: 'Your current password is incorrect' });
     }
   }
@@ -157,17 +220,23 @@ router.get('/curricula/:id', requireAuth, (req, res) => {
 });
 
 router.post('/curricula', requireRole('admin'), (req, res) => {
-  const { name, body, stage, description } = req.body || {};
+  const b = req.body || {};
+  const name = text(b.name), stage = text(b.stage);
   if (!name || !stage) return res.status(400).json({ error: 'Name and stage are required' });
+  if (!STAGES.includes(stage)) return res.status(400).json({ error: `Stage must be one of: ${STAGES.join(', ')}` });
   const r = db.prepare('INSERT INTO curricula (name, body, stage, description) VALUES (?,?,?,?)')
-    .run(name, body || null, stage, description || null);
+    .run(name, text(b.body) || null, stage, text(b.description) || null);
   res.json({ id: r.lastInsertRowid });
 });
 
 router.put('/curricula/:id', requireRole('admin'), (req, res) => {
-  const { name, body, stage, description } = req.body || {};
-  db.prepare('UPDATE curricula SET name = ?, body = ?, stage = ?, description = ? WHERE id = ?')
-    .run(name, body || null, stage, description || null, req.params.id);
+  const b = req.body || {};
+  const name = text(b.name), stage = text(b.stage);
+  if (!name || !stage) return res.status(400).json({ error: 'Name and stage are required' });
+  if (!STAGES.includes(stage)) return res.status(400).json({ error: `Stage must be one of: ${STAGES.join(', ')}` });
+  const r = db.prepare('UPDATE curricula SET name = ?, body = ?, stage = ?, description = ? WHERE id = ?')
+    .run(name, text(b.body) || null, stage, text(b.description) || null, req.params.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'Curriculum not found' });
   res.json({ ok: true });
 });
 
@@ -177,17 +246,24 @@ router.delete('/curricula/:id', requireRole('admin'), (req, res) => {
 });
 
 router.post('/curricula/:id/capabilities', requireRole('admin'), (req, res) => {
-  const { code, domain, title, description } = req.body || {};
+  const b = req.body || {};
+  const code = text(b.code), title = text(b.title);
   if (!code || !title) return res.status(400).json({ error: 'Code and title are required' });
+  // Without this the foreign key fails deep in SQLite and surfaces as a 500.
+  const cur = db.prepare('SELECT id FROM curricula WHERE id = ?').get(req.params.id);
+  if (!cur) return res.status(404).json({ error: 'Curriculum not found' });
   const r = db.prepare('INSERT INTO capabilities (curriculum_id, code, domain, title, description) VALUES (?,?,?,?,?)')
-    .run(req.params.id, code, domain || null, title, description || null);
+    .run(cur.id, code, text(b.domain) || null, title, text(b.description) || null);
   res.json({ id: r.lastInsertRowid });
 });
 
 router.put('/capabilities/:id', requireRole('admin'), (req, res) => {
-  const { code, domain, title, description } = req.body || {};
-  db.prepare('UPDATE capabilities SET code = ?, domain = ?, title = ?, description = ? WHERE id = ?')
-    .run(code, domain || null, title, description || null, req.params.id);
+  const b = req.body || {};
+  const code = text(b.code), title = text(b.title);
+  if (!code || !title) return res.status(400).json({ error: 'Code and title are required' });
+  const r = db.prepare('UPDATE capabilities SET code = ?, domain = ?, title = ?, description = ? WHERE id = ?')
+    .run(code, text(b.domain) || null, title, text(b.description) || null, req.params.id);
+  if (r.changes === 0) return res.status(404).json({ error: 'Capability not found' });
   res.json({ ok: true });
 });
 
@@ -238,7 +314,11 @@ router.get('/opportunities', requireAuth, (req, res) => {
     clauses.push('o.created_by = ?');
     params.push(req.user.id);
   } else if (['qa', 'manager', 'admin'].includes(req.user.role)) {
-    if (status) { clauses.push('o.qa_status = ?'); params.push(status); }
+    if (status) {
+      if (!QA_STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown QA status filter' });
+      clauses.push('o.qa_status = ?');
+      params.push(status);
+    }
   } else {
     clauses.push("o.qa_status = 'approved' AND o.active = 1");
   }
@@ -261,35 +341,60 @@ router.get('/opportunities', requireAuth, (req, res) => {
   res.json({ opportunities: rows });
 });
 
+// Only offer type filters that can actually return something for this user -
+// otherwise a trainee picks a type that exists only on unapproved entries and
+// gets an empty list.
 router.get('/opportunities/types', requireAuth, (req, res) => {
-  const rows = db.prepare('SELECT DISTINCT type FROM opportunities ORDER BY type').all();
+  const privileged = ['qa', 'manager', 'admin'].includes(req.user.role);
+  const rows = privileged
+    ? db.prepare('SELECT DISTINCT type FROM opportunities ORDER BY type').all()
+    : db.prepare(`SELECT DISTINCT type FROM opportunities
+        WHERE (qa_status = 'approved' AND active = 1) OR created_by = ? ORDER BY type`).all(req.user.id);
   res.json({ types: rows.map(r => r.type) });
 });
 
+// Shared visibility rule: an opportunity that has not been approved - or has
+// been withdrawn by its author - is hidden from everyone except its author and
+// the QA/manager/admin roles. Keeps the detail page, its feedback and the
+// browse list telling the same story.
+function visibleTo(user, opp) {
+  if (!opp) return false;
+  if (['qa', 'manager', 'admin'].includes(user.role) || opp.created_by === user.id) return true;
+  return opp.qa_status === 'approved' && !!opp.active;
+}
+
 router.get('/opportunities/:id', requireAuth, (req, res) => {
   const opp = db.prepare(`${oppWithMeta} WHERE o.id = ?`).get(req.params.id);
-  if (!opp) return res.status(404).json({ error: 'Opportunity not found' });
-  const canSeeUnapproved = ['qa', 'manager', 'admin'].includes(req.user.role) || opp.created_by === req.user.id;
-  if (opp.qa_status !== 'approved' && !canSeeUnapproved) return res.status(404).json({ error: 'Opportunity not found' });
+  if (!visibleTo(req.user, opp)) return res.status(404).json({ error: 'Opportunity not found' });
   opp.is_bookmarked = !!db.prepare('SELECT 1 FROM bookmarks WHERE user_id = ? AND opportunity_id = ?').get(req.user.id, opp.id);
   res.json({ opportunity: attachCapabilities(opp) });
 });
 
+// Returns an error message, or null when the body is usable. Capability ids are
+// checked against the database here: a capability deleted while the form was
+// open would otherwise fail the foreign key and surface as a 500.
 function validateOpportunity(body) {
-  const { title, type } = body || {};
-  if (!title || !type) return 'Title and type are required';
-  if (!Array.isArray(body.capability_ids) || body.capability_ids.length === 0) {
+  const b = body || {};
+  if (!text(b.title) || !text(b.type)) return 'Title and type are required';
+  if (!Array.isArray(b.capability_ids) || b.capability_ids.length === 0) {
     return 'Map the opportunity to at least one curriculum capability';
   }
+  const ids = [...new Set(b.capability_ids.map(Number).filter(Number.isInteger))];
+  if (ids.length === 0) return 'Map the opportunity to at least one curriculum capability';
+  const found = db.prepare(
+    `SELECT COUNT(*) AS n FROM capabilities WHERE id IN (${ids.map(() => '?').join(',')})`
+  ).get(...ids).n;
+  if (found !== ids.length) return 'One or more selected capabilities no longer exist. Reload the page and try again.';
   return null;
 }
 
 function setOppCaps(oppId, capIds) {
+  const ids = [...new Set(capIds.map(Number).filter(Number.isInteger))];
   db.exec('BEGIN');
   try {
     db.prepare('DELETE FROM opportunity_capabilities WHERE opportunity_id = ?').run(oppId);
     const ins = db.prepare('INSERT OR IGNORE INTO opportunity_capabilities (opportunity_id, capability_id) VALUES (?,?)');
-    for (const id of capIds) ins.run(oppId, Number(id));
+    for (const id of ids) ins.run(oppId, id);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -297,18 +402,36 @@ function setOppCaps(oppId, capIds) {
   }
 }
 
+// The writable columns of an opportunity, normalised out of a request body.
+function opportunityFields(b) {
+  return {
+    title: text(b.title),
+    description: text(b.description) || null,
+    type: text(b.type),
+    specialty: text(b.specialty) || null,
+    site: text(b.site) || null,
+    schedule: text(b.schedule) || null,
+    capacity: text(b.capacity) || null,
+    audience: text(b.audience) || null,
+    lead_name: text(b.lead_name) || null,
+    lead_email: text(b.lead_email) || null,
+    booking_url: safeUrl(b.booking_url),
+  };
+}
+
 router.post('/opportunities', requireRole('educator', 'admin'), (req, res) => {
   const err = validateOpportunity(req.body);
   if (err) return res.status(400).json({ error: err });
-  const b = req.body;
+  const f = opportunityFields(req.body);
+  if (f.lead_email && !EMAIL_RE.test(f.lead_email)) return res.status(400).json({ error: 'Enter a valid lead educator email address' });
   const r = db.prepare(`
     INSERT INTO opportunities (title, description, type, specialty, site, schedule, capacity, audience, lead_name, lead_email, booking_url, created_by)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-  `).run(b.title, b.description || null, b.type, b.specialty || null, b.site || null, b.schedule || null,
-    b.capacity || null, b.audience || null, b.lead_name || null, b.lead_email || null, safeUrl(b.booking_url), req.user.id);
-  setOppCaps(r.lastInsertRowid, b.capability_ids);
+  `).run(f.title, f.description, f.type, f.specialty, f.site, f.schedule,
+    f.capacity, f.audience, f.lead_name, f.lead_email, f.booking_url, req.user.id);
+  setOppCaps(r.lastInsertRowid, req.body.capability_ids);
   sendMail(qaEmails(), 'New learning opportunity for QA review',
-    `"${b.title}" was submitted by ${req.user.name} and is awaiting QA review.`);
+    `"${f.title}" was submitted by ${req.user.name} and is awaiting QA review.`);
   res.json({ id: r.lastInsertRowid, message: 'Submitted for QA review' });
 });
 
@@ -320,19 +443,20 @@ router.put('/opportunities/:id', requireRole('educator', 'admin'), (req, res) =>
   }
   const err = validateOpportunity(req.body);
   if (err) return res.status(400).json({ error: err });
-  const b = req.body;
+  const f = opportunityFields(req.body);
+  if (f.lead_email && !EMAIL_RE.test(f.lead_email)) return res.status(400).json({ error: 'Enter a valid lead educator email address' });
   // Content changes invalidate the previous QA decision.
   db.prepare(`
     UPDATE opportunities SET title=?, description=?, type=?, specialty=?, site=?, schedule=?, capacity=?, audience=?,
       lead_name=?, lead_email=?, booking_url=?, active=?, qa_status='pending', qa_reviewer_id=NULL, qa_comments=NULL, qa_date=NULL,
       updated_at=datetime('now')
     WHERE id=?
-  `).run(b.title, b.description || null, b.type, b.specialty || null, b.site || null, b.schedule || null,
-    b.capacity || null, b.audience || null, b.lead_name || null, b.lead_email || null, safeUrl(b.booking_url),
-    b.active === false ? 0 : 1, opp.id);
-  setOppCaps(opp.id, b.capability_ids);
+  `).run(f.title, f.description, f.type, f.specialty, f.site, f.schedule,
+    f.capacity, f.audience, f.lead_name, f.lead_email, f.booking_url,
+    req.body.active === false ? 0 : 1, opp.id);
+  setOppCaps(opp.id, req.body.capability_ids);
   sendMail(qaEmails(), 'Updated learning opportunity for QA review',
-    `"${b.title}" was updated by ${req.user.name} and is awaiting QA review.`);
+    `"${f.title}" was updated by ${req.user.name} and is awaiting QA review.`);
   res.json({ ok: true, message: 'Updated and resubmitted for QA review' });
 });
 
@@ -345,7 +469,8 @@ router.get('/qa/queue', requireRole('qa', 'admin'), (req, res) => {
 });
 
 router.post('/qa/:id/review', requireRole('qa', 'admin'), (req, res) => {
-  const { decision, comments } = req.body || {};
+  const { decision } = req.body || {};
+  const comments = text((req.body || {}).comments);
   if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ error: 'Decision must be approved or rejected' });
   if (decision === 'rejected' && !comments) return res.status(400).json({ error: 'Comments are required when rejecting' });
   const opp = db.prepare(`
@@ -390,6 +515,9 @@ router.post('/opportunities/:id/bookmark', requireAuth, (req, res) => {
 // Ratings (one per user per opportunity; upsert)
 // ---------------------------------------------------------------------------
 router.get('/opportunities/:id/ratings', requireAuth, (req, res) => {
+  // Feedback follows the same visibility rule as the opportunity itself.
+  const opp = db.prepare('SELECT id, qa_status, active, created_by FROM opportunities WHERE id = ?').get(req.params.id);
+  if (!visibleTo(req.user, opp)) return res.status(404).json({ error: 'Opportunity not found' });
   const ratings = db.prepare(`
     SELECT r.rating, r.comment, r.updated_at, u.name AS user_name
     FROM ratings r JOIN users u ON u.id = r.user_id
@@ -403,10 +531,11 @@ router.get('/opportunities/:id/ratings', requireAuth, (req, res) => {
 
 router.post('/opportunities/:id/rating', requireAuth, (req, res) => {
   const rating = Number(req.body && req.body.rating);
-  const comment = (req.body && req.body.comment) || null;
+  const comment = text(req.body && req.body.comment) || null;
   if (!(rating >= 1 && rating <= 5)) return res.status(400).json({ error: 'Rating must be between 1 and 5' });
-  const opp = db.prepare("SELECT id FROM opportunities WHERE id = ? AND qa_status = 'approved'").get(req.params.id);
-  if (!opp) return res.status(404).json({ error: 'Opportunity not found' });
+  const opp = db.prepare('SELECT id, qa_status, active, created_by FROM opportunities WHERE id = ?').get(req.params.id);
+  if (!visibleTo(req.user, opp)) return res.status(404).json({ error: 'Opportunity not found' });
+  if (opp.qa_status !== 'approved') return res.status(400).json({ error: 'Only QA-approved opportunities can be rated' });
   db.prepare(`
     INSERT INTO ratings (user_id, opportunity_id, rating, comment) VALUES (?,?,?,?)
     ON CONFLICT(user_id, opportunity_id) DO UPDATE SET rating = excluded.rating, comment = excluded.comment, updated_at = datetime('now')
@@ -431,11 +560,23 @@ router.get('/logs', requireAuth, (req, res) => {
 });
 
 router.post('/logs', requireAuth, (req, res) => {
-  const { capability_id, opportunity_id, log_date, title, reflection } = req.body || {};
-  if (!capability_id || !log_date || !title) return res.status(400).json({ error: 'Capability, date and title are required' });
+  const b = req.body || {};
+  const log_date = text(b.log_date), title = text(b.title);
+  if (!b.capability_id || !log_date || !title) return res.status(400).json({ error: 'Capability, date and title are required' });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(log_date)) return res.status(400).json({ error: 'Enter the date as YYYY-MM-DD' });
+  // Resolve the references up front so a stale id is a clear 400 rather than a
+  // foreign key failure deep in SQLite.
+  const cap = db.prepare('SELECT id FROM capabilities WHERE id = ?').get(Number(b.capability_id));
+  if (!cap) return res.status(400).json({ error: 'That capability no longer exists' });
+  let opportunityId = null;
+  if (b.opportunity_id) {
+    const opp = db.prepare('SELECT id FROM opportunities WHERE id = ?').get(Number(b.opportunity_id));
+    if (!opp) return res.status(400).json({ error: 'That learning opportunity no longer exists' });
+    opportunityId = opp.id;
+  }
   const r = db.prepare(
     'INSERT INTO portfolio_logs (user_id, capability_id, opportunity_id, log_date, title, reflection) VALUES (?,?,?,?,?,?)'
-  ).run(req.user.id, capability_id, opportunity_id || null, log_date, title, reflection || null);
+  ).run(req.user.id, cap.id, opportunityId, log_date, title, text(b.reflection) || null);
   res.json({ id: r.lastInsertRowid });
 });
 
@@ -501,21 +642,21 @@ router.get('/users', requireRole('admin'), (req, res) => {
 
 // Admin manually creates a user account.
 router.post('/users', requireRole('admin'), (req, res) => {
-  const { name, email, role, status, grade, specialty, password } = req.body || {};
+  const b = req.body || {};
+  const name = text(b.name), email = text(b.email);
   if (!name || !email) return res.status(400).json({ error: 'Name and email are required' });
-  const validRoles = ['trainee', 'educator', 'manager', 'qa', 'admin'];
-  const validStatus = ['pending', 'active', 'disabled'];
-  const r = validRoles.includes(role) ? role : 'trainee';
-  const s = validStatus.includes(status) ? status : 'active';
-  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim())) {
+  if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Enter a valid email address' });
+  const r = ROLES.includes(b.role) ? b.role : 'trainee';
+  const s = STATUSES.includes(b.status) ? b.status : 'active';
+  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) {
     return res.status(409).json({ error: 'An account with that email already exists' });
   }
-  let mustChange = 0, pw = password;
-  if (!pw || pw.length < 8) { pw = 'cmt-' + crypto.randomBytes(4).toString('hex'); mustChange = 1; }
+  let mustChange = 0, pw = typeof b.password === 'string' ? b.password : '';
+  if (pw.length < 8) { pw = 'cmt-' + crypto.randomBytes(4).toString('hex'); mustChange = 1; }
   const result = db.prepare(
     `INSERT INTO users (name, email, password_hash, role, status, grade, specialty, must_change_password) VALUES (?,?,?,?,?,?,?,?)`
-  ).run(name.trim(), email.trim(), bcrypt.hashSync(pw, 10), r, s, grade || null, specialty || null, mustChange);
-  sendMail(email.trim(), 'An account has been created for you',
+  ).run(name, email, bcrypt.hashSync(pw, 10), r, s, text(b.grade) || null, text(b.specialty) || null, mustChange);
+  sendMail(email, 'An account has been created for you',
     `An account has been created for you on the Medical Academy Curriculum Mapping Tool.` +
     (mustChange ? ` Sign in with the temporary password "${pw}" and you'll be asked to choose your own.` : ''));
   res.json({ id: result.lastInsertRowid, temporary_password: mustChange ? pw : null });
@@ -523,9 +664,7 @@ router.post('/users', requireRole('admin'), (req, res) => {
 
 router.put('/users/:id', requireRole('admin'), (req, res) => {
   const { role, status } = req.body || {};
-  const validRoles = ['trainee', 'educator', 'manager', 'qa', 'admin'];
-  const validStatus = ['pending', 'active', 'disabled'];
-  if (!validRoles.includes(role) || !validStatus.includes(status)) {
+  if (!ROLES.includes(role) || !STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Invalid role or status' });
   }
   const target = db.prepare('SELECT id FROM users WHERE id = ?').get(req.params.id);
@@ -541,8 +680,6 @@ router.put('/users/:id', requireRole('admin'), (req, res) => {
 // Bulk CSV import (admin). Body: { csv: "<file text>" }. Each importer is
 // lenient and returns a summary so the admin can see what happened.
 // ---------------------------------------------------------------------------
-const STAGES = ['undergraduate', 'foundation', 'core', 'higher', 'consultant'];
-
 router.post('/import/curricula', requireRole('admin'), (req, res) => {
   let rows;
   try { rows = parseCsv((req.body && req.body.csv) || ''); }
@@ -580,23 +717,22 @@ router.post('/import/users', requireRole('admin'), (req, res) => {
   catch (e) { return res.status(400).json({ error: 'Could not read the CSV: ' + e.message }); }
   if (rows.length === 0) return res.status(400).json({ error: 'No rows found. Check the file has a header row.' });
 
-  const validRoles = ['trainee', 'educator', 'manager', 'qa', 'admin'];
-  const validStatus = ['pending', 'active', 'disabled'];
   const exists = db.prepare('SELECT id FROM users WHERE email = ?');
   const ins = db.prepare(`INSERT INTO users (name, email, password_hash, role, status, grade, specialty, must_change_password) VALUES (?,?,?,?,?,?,?,?)`);
 
   let created = 0, skipped = 0;
   const errors = [], tempPasswords = [];
   rows.forEach((row, i) => {
-    const name = row.name, email = row.email;
+    const name = text(row.name), email = text(row.email);
     if (!name || !email) { errors.push(`Row ${i + 2}: needs name and email`); return; }
-    if (exists.get(email.trim())) { skipped++; return; }
-    const role = validRoles.includes((row.role || '').toLowerCase()) ? row.role.toLowerCase() : 'trainee';
-    const status = validStatus.includes((row.status || '').toLowerCase()) ? row.status.toLowerCase() : 'active';
+    if (!EMAIL_RE.test(email)) { errors.push(`Row ${i + 2}: "${email}" is not a valid email address`); return; }
+    if (exists.get(email)) { skipped++; return; }
+    const role = ROLES.includes(text(row.role).toLowerCase()) ? text(row.role).toLowerCase() : 'trainee';
+    const status = STATUSES.includes(text(row.status).toLowerCase()) ? text(row.status).toLowerCase() : 'active';
     let mustChange = 0, password = row.password;
     if (!password || password.length < 8) { password = 'cmt-' + crypto.randomBytes(4).toString('hex'); mustChange = 1; }
-    ins.run(name.trim(), email.trim(), bcrypt.hashSync(password, 10), role, status, row.grade || null, row.specialty || null, mustChange);
-    if (mustChange) tempPasswords.push({ email: email.trim(), temporary_password: password });
+    ins.run(name, email, bcrypt.hashSync(password, 10), role, status, row.grade || null, row.specialty || null, mustChange);
+    if (mustChange) tempPasswords.push({ email, temporary_password: password });
     created++;
   });
   res.json({ summary: { created, skipped, errors }, tempPasswords });
